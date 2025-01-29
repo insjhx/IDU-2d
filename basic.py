@@ -29,11 +29,20 @@ def show_text(screen: pygame.Surface, text = '', color = (0, 0, 0), pos = (0, 0)
     screen.blit(font[size].render((text), True, color), pos)
 def show_tip(screen: pygame.Surface, text = '', pos = (0, 0), size = 20, color = (255, 255, 255), bg_color = (88, 88, 88), alpha = 128):
     textsur = font[size].render((text), True, color)
-    bgsur = pygame.Surface((textsur.get_width(), textsur.get_height()))
+    bgsur = pygame.Surface((textsur.get_width(), textsur.get_height()), pygame.SRCALPHA)
     bgsur.fill(bg_color)
     bgsur.set_alpha(alpha)
     bgsur.blit(textsur, (0, 0))
     screen.blit(bgsur, pos)
+    return textsur.get_width(), textsur.get_height()
+
+def load_actor(name):
+    return pygame.image.load(f'./images/actor/{name}.png').convert_alpha()
+def load_block(name, s):
+    return pygame.transform.smoothscale(pygame.image.load(f'./images/{name}').convert_alpha(), (s, s))
+def load_decorate(name):
+    return pygame.image.load(f'./images/decorate/{name}.png').convert_alpha()
+la, lb, ld = load_actor, load_block, load_decorate
 
 def get_rotate_angle(x1, y1, x2, y2):
     return -math.degrees(math.atan2(y2 - y1, x2 - x1))
@@ -99,6 +108,19 @@ class Record:
         }
         self.record_dict = {
             '进击的镐子I': [0, '新手', '这下挖东西方便多了！'],
+            '进击的镐子II': [0, '新手', '你看，越硬的镐子，挖起来越顺手！'],
+            '进击的镐子III': [0, '入门', '叮！不愧是你！喜提铁镐一个！'],
+            '进击的镐子IV': [0, '入门', '金镐不错，就是有点耗资。'],
+            '进击的镐子V': [0, '入门', '是时候展示地表最强之镐了！'],
+            '原始武装(锐剑I)': [0, '新手', '现在不用害怕怪物的攻击了，杀牛羊也会更加便捷！'],
+            '坚如磐石(锐剑II)': [0, '新手', '你的装备更好了！不过，还有很多更高级的剑呢。'],
+            '铁血战士(锐剑III)': [0, '入门', '现在，你不惧怕大多数敌人了。'],
+            '黄金之刃(锐剑IV)': [0, '入门', '黄金的性价比不高，但它实在耀眼！'],
+            '钻石耀剑(锐剑V)': [0, '入门', '哦，天哪！真是一把宝剑啊！'],
+            '耐用的燃料': [0, '新手', '这团黑漆漆的东西是什么？'],
+            '来硬的': [0, '新手', '通过煅烧获得一个铁锭'],
+            '金！色！传！说！': [0, '新手', '通过煅烧获得一个金锭'],
+            '钻！石！': [0, '入门', '终于挖到赚需了兄弟们，呃呃呃！'],
         }
         self.show_queue = []
         self.name = self.desc = ''
@@ -127,6 +149,98 @@ class Record:
             show_text(screen, self.desc, (255, 255, 255), (self.rect.x + 10, self.rect.y + 50), 20)
         elif self.show_queue:
             self.name, self.color, self.desc = self.show_queue.pop(0)
+
+class Label:
+    def __init__(self, text = '', pos = (0, 0), size = 20, color = (255, 255, 255), bg_color = (88, 88, 88), alpha = 128):
+        self.text = text
+        self.pos = pos
+        self.size = size
+        self.color = color
+        self.bg_color = bg_color
+        self.alpha = alpha
+    def show_on(self, surface: pygame.Surface):
+        show_tip(surface, self.text, self.pos, self.size, self.color, self.bg_color, self.alpha)
+
+class Button(Label):
+    def __init__(self, text = '', pos = (0, 0), size = 20, color = (255, 255, 255), bg_color = (88, 88, 88), alpha = 128, border = 2, border_color = (0, 0, 0, 0)):
+        super().__init__(text, pos, size, color, bg_color, alpha)
+        self.border = self.real_border = border
+        self.real_alpha = self.alpha
+        self.border_color = border_color
+        self.high = False
+        self.w = self.h = 0
+    def hightlight(self):
+        self.real_border += 1
+        self.real_alpha = min(self.alpha * 1.5, 255)
+        self.high = True
+    def unhightlight(self):
+        self.real_border = self.border
+        self.real_alpha = self.alpha
+        self.high = False
+    def show_on(self, surface: pygame.Surface):
+        self.w, self.h = show_tip(surface, self.text, self.pos, self.size, self.color, self.bg_color, self.real_alpha)
+        pygame.draw.rect(surface, self.border_color, (self.pos, (self.w, self.h)), self.real_border)
+
+class Chatbox:
+    def __init__(self, data: dict, conn: dict, images: dict, hides: list):
+        self.data = data
+        self.images = images
+        self.image = None
+        self.image_pos = (0, 0)
+        self.conn = conn
+        self.hides = hides
+        self.hide = False
+        self.index = ''
+        self.current = []
+        self.x = self.y = 0
+        self.set_mode(0, 0, 1, 1)
+        self.set_alpha(200)
+    def next(self, value):
+        self.index += value
+        self.index = self.conn.get(self.index, self.index)
+        self.image, self.image_pos = self.images.get(self.index, (self.image, self.image_pos))
+        self.current = self.data[self.index]
+        if self.index in self.hides:
+            self.hide = True
+    def set_mode(self, x, y, w, h):
+        self.surface = pygame.Surface((w, h), pygame.SRCALPHA)
+        self.rect = pygame.Rect(0, 0, w, h)
+        self.x, self.y = x, y
+        self.set_alpha(200)
+    def set_alpha(self, alpha):
+        self.surface.set_alpha(alpha)
+    def draw(self, screen: pygame.Surface):
+        if self.hide:
+            return
+        self.surface.fill((255, 255, 255, 0))
+        pygame.draw.rect(self.surface, (0, 0, 0), self.rect, 0, 10)
+        pygame.draw.rect(self.surface, (255, 255, 255), self.rect, 5, 10)
+        for each in self.current:
+            each.show_on(self.surface)
+        screen.blit(self.surface, (self.x, self.y))
+        if self.image:
+            screen.blit(self.image, self.image_pos)
+    def update(self, event):
+        if self.hide:
+            return
+        has_button = False
+        for each in self.current:
+            if type(each) == Button:
+                has_button = True
+                x, y = pygame.mouse.get_pos()
+                x -= self.x
+                y -= self.y
+                if each.w and each.h and collision(*each.pos, each.w, each.h, x, y, 1, 1):
+                    if not each.high:
+                        each.hightlight()
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        self.next(each.text)
+                elif each.high:
+                    each.unhightlight()
+        if not has_button:
+            if (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1) or (event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN):
+                self.next('>')
+
 
 # record_dict = {
 #     '挖掘！': [0,'新手','完成第一个方块的挖掘'],
